@@ -2,16 +2,15 @@ influx - weewx extension that sends data to an influx data server
 Copyright 2016-2021 Matthew Wall
 Distributed under terms of the GPLv3
 
-===============================================================================
-Installation
+## Installation
 
 1) download
 
-wget -O weewx-influx.zip https://github.com/matthewwall/weewx-influx/archive/master.zip
+wget -O weewx-influx.zip https://github.com/weewx-packages/weewx-influx/archive/refs/heads/master.zip
 
 2) run the installer:
 
-wee_extension --install weewx-influx.zip
+weectl extension install weewx-influx.zip
 
 3) enter parameters in weewx.conf:
 
@@ -26,8 +25,7 @@ sudo /etc/init.d/weewx stop
 sudo /etc/init.d/weewx start
 
 
-===============================================================================
-Configuration
+## Configuration
 
 A minimal configuration requires only a host and database.
 
@@ -71,8 +69,7 @@ Here is a complete enumeration of options.  Specify only those that you need.
                 format = %.2f                      # optional for each obs
 
 
-===============================================================================
-Line formats
+## Line formats
 
 Influx defines two line formats, multi-line and single-line.  This extension
 defines the following formats: single-line, multi-line, and multi-line-dotted.
@@ -134,8 +131,7 @@ time                VPV
 1536086341000000000 63.74
 
 
-===============================================================================
-Input map
+## Input map
 
 When an input map is specified, only variables in that map will be uploaded.
 The 'units' parameter can be used to specify which units should be used for
@@ -165,3 +161,63 @@ the input, independent of the local weewx units.
                 format = %.2f
             [[[[windDir]]]]
                 format = %03.0f
+
+## InfluxDB v2
+
+Use an existing organization and bucket, plus a token with write access:
+
+```ini
+[StdRESTful]
+    [[Influx]]
+        version = 2
+        server_url = https://influx.example.com:8086
+        org = weather
+        bucket = archive
+        token = YOUR_WRITE_TOKEN
+        binding = archive
+```
+
+`loop_bucket` optionally selects a separate bucket for LOOP records. Version 1
+remains the default and uses `database`, `username` and `password`. Version 2
+uses `/api/v2/write` with Token authentication. It does not create buckets.
+Provision the bucket and token in InfluxDB before starting WeeWX.
+
+Use a full `http://` or `https://` URL in `server_url`. TLS certificates and
+hostnames are verified by default. `ca_file` selects a private CA certificate.
+`verify_ssl = false` disables verification for explicitly trusted test setups.
+A 401/403 response is an authentication/permission error. A 404 identifies an
+unknown bucket/database, and 405 indicates an incorrect endpoint or proxy.
+
+## Historical archive replay
+
+Run `backfill.py` from this checkout with the Python environment containing
+WeeWX. It reads the configured wx_binding archive and posts each record with
+its original timestamp. Stop WeeWX uploads during replay to avoid concurrent
+writes to the same measurements. Start is exclusive, stop is inclusive.
+
+```sh
+python backfill.py --config /path/to/weewx.conf --start 1600000000 --stop 1700000000
+```
+
+Replay stops at the first failed upload. Repeating a range writes to the same
+Influx measurement/tag/timestamp keys; Influx field merge rules apply. The
+archive is read through the WeeWX database manager. It is not modified.
+
+The default measurement is `record`. A successful 204 response means that
+Influx accepted the write. Query the configured database/bucket, the `record`
+measurement and the original record time range when checking for data.
+
+## Related work
+
+`david-lutz/weewx-influx2` was checked at its 2021-02-22 tip. It covers v2 only,
+retains distutils and disables TLS verification. This continuation preserves
+v1 support and adds v2 without running two predecessor/successor packages.
+Native v2 and Markdown proposals in upstream PRs #31, #34 and #30 were reviewed
+for this implementation; their authors remain credited in those discussions.
+
+Modified 2026-10-22 by weewx-packages.
+
+For a non-weather archive, set `data_binding = kl_binding` in the Influx
+section, using the binding configured for that driver. Replay also accepts
+`--binding kl_binding`. Custom numeric observations are uploaded under their
+observation names; unit conversion follows the driver's registered units.

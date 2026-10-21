@@ -1,3 +1,4 @@
+# Modified 2026-10-22 by weewx-packages: compatibility and tracker repairs.
 # Copyright 2016-2021 Matthew Wall
 # Distributed under the terms of the GNU Public License (GPLv3)
 
@@ -125,32 +126,16 @@ the input, independent of the local weewx units.
                 format = %03.0f
 """
 
-try:
-    # Python 3
-    import queue
-except ImportError:
-    # Python 2
-    import Queue as queue
+import queue
 import base64
-from distutils.version import StrictVersion
-try:
-    # Python 3
-    import http.client as http_client
-except ImportError:
-    # Python 2
-    import httplib as http_client
+import math
+import ssl
+import re
+import http.client as http_client
 import socket
-try:
-    # Python 3
-    from urllib.parse import urlparse, urlencode
-    from urllib.request import urlopen, Request
-    from urllib.error import HTTPError, URLError
-except ImportError:
-    # Python 2
-    from urlparse import urlparse
-    from urllib import urlencode
-    from urllib2 import urlopen, Request, HTTPError, URLError
-    from httplib import BadStatusLine
+from urllib.parse import urlparse, urlencode
+from urllib.request import urlopen, Request
+from urllib.error import HTTPError, URLError
 import sys
 
 import weewx
@@ -158,10 +143,27 @@ import weewx.restx
 import weewx.units
 from weeutil.weeutil import to_bool, accumulateLeaves
 
-VERSION = "0.17"
+VERSION = "0.21.0"
+
+def _version_key(value):
+    """Return a release tuple with prereleases before the final release.
+
+    Args:
+        value (str): A WeeWX version, including optional a/b/rc/dev suffixes.
+
+    Returns:
+        tuple[int, int, int, int]: Release numbers followed by a final-release flag.
+    """
+    match = re.match(r'^(\d+)(?:\.(\d+))?(?:\.(\d+))?(.*)$', value)
+    if match is None:
+        raise ValueError('Invalid WeeWX version: %s' % value)
+    release = (int(match.group(1)), int(match.group(2) or 0), int(match.group(3) or 0))
+    prerelease = re.match(r'(?:a|b|rc|dev|[.-]dev)', match.group(4), re.I)
+    return release + (0 if prerelease else 1,)
+
 
 REQUIRED_WEEWX = "3.5.0"
-if StrictVersion(weewx.__version__) < StrictVersion(REQUIRED_WEEWX):
+if _version_key(weewx.__version__) < _version_key(REQUIRED_WEEWX):
     raise weewx.UnsupportedFeature("weewx %s or greater is required, found %s"
                                    % (REQUIRED_WEEWX, weewx.__version__))
 
@@ -292,11 +294,12 @@ class Influx(weewx.restx.StdRESTbase):
         """
         super(Influx, self).__init__(engine, cfg_dict)
         loginf("service version is %s" % VERSION)
-        site_dict = weewx.restx.get_site_dict(cfg_dict, 'Influx', 'database')
+        site_dict = weewx.restx.get_site_dict(cfg_dict, 'Influx')
         if site_dict is None:
             return
 
 
+        data_binding = site_dict.pop('data_binding', 'wx_binding')
         port = int(site_dict.get('port', 8086))
         host = site_dict.get('host', 'localhost')
         if site_dict.get('server_url', None) is None:
@@ -315,7 +318,7 @@ class Influx(weewx.restx.StdRESTbase):
         site_dict.setdefault('augment_record', True)
         site_dict.setdefault('measurement', 'record')
 
-        loginf("database: %s" % site_dict['database'])
+        loginf("database: %s" % site_dict.get('database', site_dict.get('bucket')))
         loginf("destination: %s" % site_dict['server_url'])
         loginf("line_format: %s" % site_dict['line_format'])
         loginf("measurement: %s" % site_dict['measurement'])
@@ -339,7 +342,7 @@ class Influx(weewx.restx.StdRESTbase):
         try:
             if site_dict.get('augment_record'):
                 _manager_dict = weewx.manager.get_manager_dict_from_config(
-                    cfg_dict, 'wx_binding')
+                    cfg_dict, data_binding)
                 site_dict['manager_dict'] = _manager_dict
         except weewx.UnknownBinding:
             pass
@@ -388,7 +391,9 @@ class InfluxThread(weewx.restx.RESTThread):
 
     _DEFAULT_SERVER_URL = 'http://localhost:8086'
 
-    def __init__(self, queue, database,
+    def __init__(self, queue, database=None,
+                 version=1, bucket=None, org=None, token=None, loop_bucket=None,
+                 verify_ssl=True, ca_file=None,
                  username=None, password=None,
                  dbadmin_username=None, dbadmin_password=None,
                  line_format='single-line', create_database=True,
@@ -411,22 +416,37 @@ class InfluxThread(weewx.restx.RESTThread):
                                            max_tries=max_tries,
                                            timeout=timeout,
                                            retry_wait=retry_wait)
+        self.version = int(version)
+        if self.version not in (1, 2):
+            raise ValueError('Influx version must be 1 or 2')
+        if self.version == 1 and not database:
+            raise ValueError('Influx v1 requires database')
+        if self.version == 2 and not all((bucket, org, token)):
+            raise ValueError('Influx v2 requires bucket, org and token')
+        self.bucket = bucket
+        self.loop_bucket = loop_bucket or bucket
+        self.org = org
+        self.token = token
+        self.verify_ssl = to_bool(verify_ssl)
+        self.ca_file = ca_file
         self.database = database
         self.username = username
         self.password = password
         self.measurement = measurement
-        self.tags = tags
+        self.tags = ','.join(tags) if isinstance(tags, list) else tags
         self.obs_to_upload = obs_to_upload
         self.append_units_label = append_units_label
         self.inputs = inputs
-        self.server_url = server_url
+        if urlparse(server_url).scheme not in ('http', 'https') or not urlparse(server_url).netloc:
+            raise ValueError('server_url requires http:// or https:// and a host')
+        self.server_url = server_url.rstrip('/')
         self.skip_upload = to_bool(skip_upload)
         self.unit_system = unit_system
         self.augment_record = augment_record
         self.templates = dict()
         self.line_format = line_format
 
-        if create_database:
+        if to_bool(create_database) and self.version == 1:
             uname = None
             pword = None
             if dbadmin_username:
@@ -439,19 +459,22 @@ class InfluxThread(weewx.restx.RESTThread):
 
     def create_database(self, username, password):
         # ensure that the database exists
-        qstr = urlencode({'q': 'CREATE DATABASE %s' % self.database})
+        quoted = self.database.replace('\\', '\\\\').replace(chr(34), '\\' + chr(34))
+        qstr = urlencode({'q': 'CREATE DATABASE "%s"' % quoted})
         url = '%s/query?%s' % (self.server_url, qstr)
         req = Request(url)
         req.add_header("User-Agent", "weewx/%s" % weewx.__version__)
         if username and password:
             # Create a base64 byte string with the authorization info
-            base64bytes = base64.b64encode(('%s:%s' % (self.username, self.password)).encode())
+            base64bytes = base64.b64encode(('%s:%s' % (username, password)).encode()).decode('ascii')
             # Add the authentication header to the request:
-            req.add_header("Authorization", b"Basic %s" % base64bytes)
+            req.add_header("Authorization", "Basic %s" % base64bytes)
         try:
             # The use of a GET to create a database has been deprecated.
             # Include a dummy payload to force a POST.
-            self.post_request(req, 'None')
+            response = self.post_request(req, '')
+            with response:
+                self.check_response(response)
         except (socket.error, socket.timeout, URLError, http_client.BadStatusLine, http_client.IncompleteRead) as e:
             logerr("create database failed: %s" % e)
 
@@ -464,8 +487,11 @@ class InfluxThread(weewx.restx.RESTThread):
             record = weewx.units.to_std_system(record, self.unit_system)
         return record
 
-    def format_url(self, _):
-        return '%s/write?db=%s' % (self.server_url, self.database)
+    def format_url(self, record):
+        if self.version == 2:
+            bucket = self.loop_bucket if record.get('binding') == 'loop' else self.bucket
+            return '%s/api/v2/write?%s' % (self.server_url, urlencode({'org': self.org, 'bucket': bucket, 'precision': 'ns'}))
+        return '%s/write?%s' % (self.server_url, urlencode({'db': self.database}))
 
     def get_request(self, url):
         """Override and add username and password"""
@@ -473,11 +499,13 @@ class InfluxThread(weewx.restx.RESTThread):
         # Get the basic Request from my superclass
         request = super(InfluxThread, self).get_request(url)
 
-        if self.username and self.password:
+        if self.version == 2:
+            request.add_header("Authorization", "Token %s" % self.token)
+        elif self.username and self.password:
             # Create a base64 byte string with the authorization info
-            base64string = base64.b64encode(('%s:%s' % (self.username, self.password)).encode())
+            base64string = base64.b64encode(('%s:%s' % (self.username, self.password)).encode()).decode('ascii')
             # Add the authentication header to the request:
-            request.add_header("Authorization", b"Basic %s" % base64string)
+            request.add_header("Authorization", "Basic %s" % base64string)
         return request
 
     def check_response(self, response):
@@ -494,28 +522,29 @@ class InfluxThread(weewx.restx.RESTThread):
         if isinstance(e, HTTPError):
             payload = e.read().decode()
             logdbg("exception: %s payload: %s" % (e, payload))
+            if e.code in (401, 403):
+                raise weewx.restx.BadLogin(payload)
+            if e.code in (400, 404, 405, 422):
+                raise weewx.restx.AbortedPost('HTTP %d: %s' % (e.code, payload))
             if payload and payload.find("error") >= 0:
                 if payload.find("database not found") >= 0:
                     raise weewx.restx.AbortedPost(payload)
         super(InfluxThread, self).handle_exception(e, count)
 
     def post_request(self, request, payload=None):
-        # FIXME: provide full set of ssl options instead of this hack
-        if self.server_url.startswith('https'):
-            import ssl
-            encoded = None
-            if payload:
-                encoded = payload.encode('utf-8')
-            return urlopen(request, data=encoded, timeout=self.timeout,
-                           context=ssl._create_unverified_context())
-        return super(InfluxThread, self).post_request(request, payload)
+        context = ssl.create_default_context(cafile=self.ca_file)
+        if not self.verify_ssl:
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+        encoded = payload.encode('utf-8') if isinstance(payload, str) else payload
+        return urlopen(request, data=encoded, timeout=self.timeout, context=context)
 
     def get_post_body(self, record):
         """Override my superclass and get the body of the POST"""
 
         # create the list of tags
         tags = ''
-        binding = record.pop('binding', None)
+        binding = record.get('binding')
         if binding is not None:
             tags = ',binding=%s' % binding
         if self.tags:
@@ -528,6 +557,8 @@ class InfluxThread(weewx.restx.RESTThread):
         if self.obs_to_upload == 'all' or self.obs_to_upload == 'most':
             for f in record:
                 if self.obs_to_upload == 'most' and f in OBS_TO_SKIP:
+                    continue
+                if f == 'binding':
                     continue
                 if f not in self.templates:
                     self.templates[f] = _get_template(f,
@@ -549,6 +580,8 @@ class InfluxThread(weewx.restx.RESTThread):
         for k in self.templates:
             try:
                 v = float(record.get(k))
+                if not math.isfinite(v):
+                    continue
                 name = self.templates[k].get('name', k)
                 fmt = self.templates[k].get('format', '%s')
                 to_units = self.templates[k].get('units')
@@ -571,14 +604,14 @@ class InfluxThread(weewx.restx.RESTThread):
                     # use a single line
                     data.append('%s=%s' % (name, s))
             except (TypeError, ValueError) as e:
-                # FIXME: influx1 does not support NULL.  for influx2, ensure
-                # that any None values are retained as NULL.
                 logdbg("skipped value '%s': %s" % (record.get(k), e))
         if self.line_format == 'multi-line' or self.line_format == 'multi-line-dotted':
             str_data = '\n'.join(data)
         else:
             str_data = '%s%s %s %d' % (self.measurement, tags, ','.join(data), record['dateTime']*1000000000)
-        return str_data, 'application/x-www-form-urlencoded'
+        if not data:
+            raise weewx.restx.AbortedPost('No numeric observations to upload')
+        return str_data, 'text/plain; charset=utf-8'
 
 # Use this hook to test the uploader:
 #   PYTHONPATH=bin python bin/user/influx.py
@@ -632,8 +665,8 @@ if __name__ == "__main__":
 
     print("Using server-url of '%s'" % options.server_url)
 
-    queue = queue.Queue()
-    t = InfluxThread(queue,
+    data_queue = queue.Queue()
+    t = InfluxThread(data_queue,
                      manager_dict=None,
                      database=options.database,
                      username=options.user,
@@ -641,10 +674,10 @@ if __name__ == "__main__":
                      measurement=options.measurement,
                      tags=options.tags,
                      server_url=options.server_url)
-    queue.put({'dateTime': int(time.time() + 0.5),
+    data_queue.put({'dateTime': int(time.time() + 0.5),
                'usUnits': weewx.US,
                'outTemp': 32.5,
                'inTemp': 75.8,
                'outHumidity': 24})
-    queue.put(None)
+    data_queue.put(None)
     t.run()

@@ -1,0 +1,99 @@
+{
+  "environments": [
+    {
+      "environment": "py314-weewx552",
+      "exit_code": 0,
+      "seconds": 2.82,
+      "summary": "16 passed in 2.64s"
+    },
+    {
+      "environment": "py310-weewx510",
+      "exit_code": 0,
+      "seconds": 2.82,
+      "summary": "16 passed in 2.68s"
+    },
+    {
+      "environment": "py310-weewx410",
+      "exit_code": 0,
+      "seconds": 2.78,
+      "summary": "16 passed in 2.64s"
+    }
+  ],
+  "mutations": [
+    {
+      "mutation": "hyphen-database",
+      "test": "tests/test_influx.py::test_v1_hyphen_database_admin_auth_and_204_write",
+      "detected": true,
+      "exit_code": 1,
+      "observed_failure": "E       assert ['CREATE DATA...weewx-docker'] == ['CREATE DATA...eewx-docker\"']\nE         \nE         At index 0 diff: 'CREATE DATABASE weewx-docker' != 'CREATE DATABASE \"weewx-docker\"'\nE         Use -v to get more diff\nFAILED tests/test_influx.py::test_v1_hyphen_database_admin_auth_and_204_write"
+    },
+    {
+      "mutation": "v2-token",
+      "test": "tests/test_influx.py::test_v2_token_encoded_names_and_loop_bucket",
+      "detected": true,
+      "exit_code": 1,
+      "observed_failure": "E       AssertionError: assert 'Basic local-token' == 'Token local-token'\nE         \nE         - Token local-token\nE         + Basic local-token\nFAILED tests/test_influx.py::test_v2_token_encoded_names_and_loop_bucket - As..."
+    },
+    {
+      "mutation": "certificate-verification",
+      "test": "tests/test_influx.py::test_real_tls_rejects_unknown_ca_and_accepts_explicit_ca",
+      "detected": true,
+      "exit_code": 1,
+      "observed_failure": "E           Failed: DID NOT RAISE URLError\nFAILED tests/test_influx.py::test_real_tls_rejects_unknown_ca_and_accepts_explicit_ca"
+    },
+    {
+      "mutation": "backfill-timestamp",
+      "test": "tests/test_influx.py::test_history_preserves_each_timestamp",
+      "detected": true,
+      "exit_code": 1,
+      "observed_failure": "E       assert [170000000000...0000000000000] == [160000000000...0600000000000]\nE         \nE         At index 0 diff: 1700000000000000000 != 1600000000000000000\nE         Use -v to get more diff\nFAILED tests/test_influx.py::test_history_preserves_each_timestamp - assert [..."
+    },
+    {
+      "mutation": "klimalogg-binding",
+      "test": "tests/test_influx.py::test_klimalogg_binding_and_custom_values_reach_receiver",
+      "detected": true,
+      "exit_code": 1,
+      "observed_failure": "E       TypeError: 'NoneType' object is not subscriptable\nFAILED tests/test_influx.py::test_klimalogg_binding_and_custom_values_reach_receiver"
+    }
+  ],
+  "integration": {
+    "other-influx-v1": {
+      "status": "passed",
+      "image": "sha256:299ebda2c7e308dbef42e26ac9b8fd1d9b3bcb8a0aee80c6509aa0219c1d0290",
+      "readback": {
+        "results": [
+          {
+            "statement_id": 0,
+            "series": [
+              {
+                "name": "record",
+                "columns": [
+                  "time",
+                  "binding",
+                  "outTemp_F"
+                ],
+                "values": [
+                  [
+                    "2023-11-14T22:13:20Z",
+                    "archive",
+                    0
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "other-influx-v2": {
+      "status": "passed",
+      "image": "sha256:b8d940ca9376f85118260f5b6bd236b8a00b1749c3350c5578d4cde8e27f31f2",
+      "readback": ",result,table,_start,_stop,_time,_value,_field,_measurement,binding\r\n,_result,0,2023-01-01T00:00:00Z,2024-01-01T00:00:00Z,2023-11-14T22:13:20Z,0,outTemp_F,record,archive\r\n\r\n"
+    },
+    "zabbix7": {
+      "status": "passed",
+      "api_version": "7.0.32",
+      "import_result": true
+    }
+  }
+}

@@ -1,3 +1,4 @@
+# Modified 2026-10-22 by weewx-packages: compatibility and tracker repairs.
 # installer for influx
 # Copyright 2016-2021 Matthew Wall
 # Distributed under the terms of the GNU Public License (GPLv3)
@@ -10,7 +11,7 @@ def loader():
 class InfluxInstaller(ExtensionInstaller):
     def __init__(self):
         super(InfluxInstaller, self).__init__(
-            version="0.17",
+            version="0.21.0",
             name='influx',
             description='Upload weather data to Influx.',
             author="Matthew Wall",
