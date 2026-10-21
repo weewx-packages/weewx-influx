@@ -95,5 +95,100 @@
       "api_version": "7.0.32",
       "import_result": true
     }
+  },
+  "independent_review_2026_10_22": {
+    "upstream_refs": {
+      "master": "e0a863062aa957fd8a4b0c5c8484d6530bbf0f4c",
+      "development": "06b5ffb3335417132d7527e738e7eea9769c46bf"
+    },
+    "environments": [
+      {
+        "environment": "master-py310",
+        "exit_code": 0,
+        "summary": "18 passed in 2.65s"
+      },
+      {
+        "environment": "master-py314",
+        "exit_code": 0,
+        "summary": "18 passed in 2.62s"
+      },
+      {
+        "environment": "development-py310",
+        "exit_code": 0,
+        "summary": "18 passed in 2.65s"
+      },
+      {
+        "environment": "development-py314",
+        "exit_code": 0,
+        "summary": "18 passed in 2.77s"
+      }
+    ],
+    "mutations": [
+      {
+        "mutation": "unit-label-cache",
+        "test": "tests/test_influx.py::test_unit_labels_follow_each_record_and_preserve_overrides",
+        "detected": true,
+        "failure_summary": "1 failed in 0.05s",
+        "restored_exit_code": 0
+      },
+      {
+        "mutation": "backfill-augment-bool",
+        "test": "tests/test_influx.py::test_thread_normalizes_configobj_booleans_for_backfill",
+        "detected": true,
+        "failure_summary": "1 failed in 0.07s",
+        "restored_exit_code": 0
+      },
+      {
+        "mutation": "backfill-label-bool",
+        "test": "tests/test_influx.py::test_thread_normalizes_configobj_booleans_for_backfill",
+        "detected": true,
+        "failure_summary": "1 failed in 0.04s",
+        "restored_exit_code": 0
+      }
+    ],
+    "limits": [
+      "No external account, live API, hardware or renderer certification."
+    ],
+    "previous_release_unchanged": true,
+    "real_integration": {
+      "influx_v1": {
+        "status": "passed",
+        "image": "sha256:299ebda2c7e308dbef42e26ac9b8fd1d9b3bcb8a0aee80c6509aa0219c1d0290",
+        "readback": {
+          "results": [
+            {
+              "statement_id": 0,
+              "series": [
+                {
+                  "name": "record",
+                  "columns": [
+                    "time",
+                    "outTemp_F",
+                    "outTemp_C"
+                  ],
+                  "values": [
+                    [
+                      "2023-11-14T22:13:20Z",
+                      32,
+                      null
+                    ],
+                    [
+                      "2023-11-14T22:18:20Z",
+                      null,
+                      0
+                    ]
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "influx_v2": {
+        "status": "passed",
+        "image": "sha256:b8d940ca9376f85118260f5b6bd236b8a00b1749c3350c5578d4cde8e27f31f2",
+        "readback": ",result,table,_start,_stop,_time,_value,_field,_measurement,binding\r\n,_result,0,2023-11-14T22:13:00Z,2023-11-14T22:20:00Z,2023-11-14T22:18:20Z,0,outTemp_C,record,archive\r\n,_result,1,2023-11-14T22:13:00Z,2023-11-14T22:20:00Z,2023-11-14T22:13:20Z,32,outTemp_F,record,archive\r\n\r\n"
+      }
+    }
   }
 }

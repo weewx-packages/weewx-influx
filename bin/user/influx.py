@@ -143,7 +143,7 @@ import weewx.restx
 import weewx.units
 from weeutil.weeutil import to_bool, accumulateLeaves
 
-VERSION = "0.21.0"
+VERSION = "0.21.1"
 
 def _version_key(value):
     """Return a release tuple with prereleases before the final release.
@@ -435,15 +435,16 @@ class InfluxThread(weewx.restx.RESTThread):
         self.measurement = measurement
         self.tags = ','.join(tags) if isinstance(tags, list) else tags
         self.obs_to_upload = obs_to_upload
-        self.append_units_label = append_units_label
+        self.append_units_label = to_bool(append_units_label)
         self.inputs = inputs
         if urlparse(server_url).scheme not in ('http', 'https') or not urlparse(server_url).netloc:
             raise ValueError('server_url requires http:// or https:// and a host')
         self.server_url = server_url.rstrip('/')
         self.skip_upload = to_bool(skip_upload)
         self.unit_system = unit_system
-        self.augment_record = augment_record
+        self.augment_record = to_bool(augment_record)
         self.templates = dict()
+        self.template_unit_system = None
         self.line_format = line_format
 
         if to_bool(create_database) and self.version == 1:
@@ -541,6 +542,11 @@ class InfluxThread(weewx.restx.RESTThread):
 
     def get_post_body(self, record):
         """Override my superclass and get the body of the POST"""
+
+        # LOOP packets can use different units from the archive records.
+        if self.template_unit_system != record['usUnits']:
+            self.templates.clear()
+            self.template_unit_system = record['usUnits']
 
         # create the list of tags
         tags = ''

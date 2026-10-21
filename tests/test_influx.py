@@ -14,6 +14,30 @@ import influx
 import backfill
 
 
+def test_unit_labels_follow_each_record_and_preserve_overrides():
+    worker = influx.InfluxThread(queue.Queue(), database='x', create_database=False)
+    for units, temperature, field in [(weewx.US,32,'outTemp_F=32.0'),
+                                      (weewx.METRIC,0,'outTemp_C=0.0'),
+                                      (weewx.US,32,'outTemp_F=32.0')]:
+        body = worker.get_post_body({'dateTime':1700000000,'usUnits':units,'outTemp':temperature})[0]
+        assert field in body
+    worker = influx.InfluxThread(queue.Queue(), database='x', create_database=False,
+                                 inputs={'outTemp':{'units':'degree_C','name':'outside'}}, obs_to_upload='inputs')
+    for units, temperature in [(weewx.US,32),(weewx.METRIC,0)]:
+        body = worker.get_post_body({'dateTime':1700000000,'usUnits':units,'outTemp':temperature})[0]
+        assert 'outside=0.0' in body
+
+
+def test_thread_normalizes_configobj_booleans_for_backfill():
+    worker = influx.InfluxThread(queue.Queue(), database='x', create_database=False,
+                                 augment_record='false', append_units_label='false')
+    class UnusedArchive:
+        def getSql(self, *args):
+            pytest.fail('augment_record=false must not query the archive')
+    record = worker.get_record({'dateTime':1700000000,'usUnits':weewx.US,'outTemp':0}, UnusedArchive())
+    assert 'outTemp=0.0' in worker.get_post_body(record)[0]
+
+
 @pytest.fixture
 def receiver():
     received=[]

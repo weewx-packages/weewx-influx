@@ -1,3 +1,6 @@
+2026-10-22  0.21.1
+  Rebuild field templates when record units change and normalize ConfigObj booleans for archive replay.
+
 0.17 22jul2022
 * better reporting for None values
 * explicitly no support for None in influx1 (but ok for influx2)

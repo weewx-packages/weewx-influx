@@ -19,3 +19,7 @@ Version 0.21.0. Original repository and revision are in ORIGIN.md.
 * https://github.com/matthewwall/weewx-influx/issues/1: TLS verifies certificate and hostname by default; ca_file and explicit verify_ssl option. Real local TLS rejects untrusted CA and accepts configured CA.
 
 Tests run under WeeWX 4.10.2/5.1.0 on Python 3.10 and WeeWX 5.5.2 on Python 3.14. Local receivers and isolated install directories avoid live station changes. The tests do not establish individual external account permissions.
+
+## Independent review, 2026-10-22
+
+Version 0.21.1. Rebuild field templates when record units change and normalize ConfigObj booleans for archive replay. Regression tests fail against the prior release and pass with this patch. The prior release archive is unchanged.
