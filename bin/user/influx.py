@@ -1,6 +1,8 @@
 # Modified 2026-10-22 by weewx-packages: compatibility and tracker repairs.
 # Modified 2026-10-23 by weewx-packages: report invalid and unknown options
 # instead of stopping WeeWX, accept unit_system in any case.
+# Modified 2026-10-23 by weewx-packages: share option checks with backfill.py,
+# skip a field whose input map names a unit it cannot be converted to.
 # Copyright 2016-2021 Matthew Wall
 # Distributed under the terms of the GNU Public License (GPLv3)
 
@@ -252,6 +254,35 @@ def _get_template(obs_key, overrides, append_units_label, unit_system):
     return tmpl_dict
 
 
+def get_unit_system(name):
+    """Look up the value of the unit_system option.
+
+    Args:
+        name (str): The option value in any case, e.g., 'metric'.
+
+    Returns:
+        int|None: weewx.US, weewx.METRIC or weewx.METRICWX. None if the name
+            is not a WeeWX unit system.
+    """
+    return weewx.units.unit_constants.get(name.upper())
+
+
+def drop_unknown_options(site_dict):
+    """Remove and log the options that InfluxThread does not accept.
+
+    InfluxThread takes the options as keyword arguments, so an unknown one
+    would raise TypeError.
+
+    Args:
+        site_dict (dict): Keyword arguments for InfluxThread, changed in place.
+    """
+    known = set(inspect.signature(InfluxThread.__init__).parameters)
+    known -= {'self', 'queue'}
+    for option in sorted(set(site_dict) - known):
+        logwrn("Unknown option '%s' ignored" % option)
+        del site_dict[option]
+
+
 class Influx(weewx.restx.StdRESTbase):
     def __init__(self, engine, cfg_dict):
         """This service recognizes standard restful options plus the following:
@@ -338,13 +369,12 @@ class Influx(weewx.restx.StdRESTbase):
 
         usn = site_dict.get('unit_system', None)
         if usn is not None:
-            usn = usn.upper()
-            if usn not in weewx.units.unit_constants:
+            site_dict['unit_system'] = get_unit_system(usn)
+            if site_dict['unit_system'] is None:
                 logerr("Data will not be posted: unknown unit_system '%s'. "
-                       "Use US, METRIC or METRICWX" % site_dict['unit_system'])
+                       "Use US, METRIC or METRICWX" % usn)
                 return
-            site_dict['unit_system'] = weewx.units.unit_constants[usn]
-            loginf("desired unit system: %s" % usn)
+            loginf("desired unit system: %s" % usn.upper())
 
         if 'inputs' in cfg_dict['StdRESTful']['Influx']:
             site_dict['inputs'] = dict(
@@ -372,14 +402,8 @@ class Influx(weewx.restx.StdRESTbase):
             binding = ','.join(binding)
         loginf('binding: %s' % binding)
 
-        # InfluxThread takes the options as keyword arguments. An option it
-        # does not know would raise TypeError and stop WeeWX, so log it and
-        # leave it out.
-        known = set(inspect.signature(InfluxThread.__init__).parameters)
-        known -= {'self', 'queue'}
-        for option in sorted(set(site_dict) - known):
-            logwrn("Unknown option '%s' ignored" % option)
-            del site_dict[option]
+        # A TypeError from an unknown option would stop WeeWX.
+        drop_unknown_options(site_dict)
 
         data_queue = queue.Queue()
         try:
@@ -474,6 +498,8 @@ class InfluxThread(weewx.restx.RESTThread):
         self.augment_record = to_bool(augment_record)
         self.templates = dict()
         self.template_unit_system = None
+        # Fields already reported as not convertible, see get_post_body().
+        self.unconvertible = set()
         self.line_format = line_format
 
         if to_bool(create_database) and self.version == 1:
@@ -624,7 +650,19 @@ class InfluxThread(weewx.restx.RESTThread):
                     (from_unit, from_group) = weewx.units.getStandardUnitType(
                         record['usUnits'], k)
                     from_t = (v, from_unit, from_group)
-                    v = weewx.units.convert(from_t, to_units)[0]
+                    try:
+                        v = weewx.units.convert(from_t, to_units)[0]
+                    except KeyError:
+                        # The input map names a unit that WeeWX does not know
+                        # (e.g., 'mph' instead of 'mile_per_hour'), one from
+                        # another unit group, or the field has no unit group.
+                        # Uncaught, the KeyError would end the upload thread.
+                        # Skip the field, and warn once, not with every record.
+                        if k not in self.unconvertible:
+                            self.unconvertible.add(k)
+                            logwrn("skipped field '%s': cannot convert %s to "
+                                   "'%s'" % (k, from_unit, to_units))
+                        continue
                 s = fmt % v
                 if self.line_format == 'multi-line-dotted':
                     # use multiple lines with a dotted-name identifier

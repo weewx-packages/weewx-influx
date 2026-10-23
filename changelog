@@ -2,6 +2,8 @@ Unreleased
   A missing database, org, bucket or token, an invalid server_url or an unknown unit_system is logged and the uploader does not start. WeeWX keeps running.
   Accept unit_system in any case.
   Log and ignore unknown options.
+  backfill.py accepts unit_system in any case and ignores unknown options, like the service.
+  An input map unit that WeeWX cannot convert to, such as units = mph, no longer ends the upload thread. The field is skipped and a warning is logged once.
 
 2026-10-22  0.21.1
   Rebuild field templates when record units change and normalize ConfigObj booleans for archive replay.

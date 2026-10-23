@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # Modified 2026-10-22 by weewx-packages: add bounded archive replay.
+# Modified 2026-10-23 by weewx-packages: check unit_system and unknown options
+# like the service does.
 # Distributed under the terms of the GNU Public License (GPLv3)
 """Replay a WeeWX archive through the configured Influx writer."""
 
@@ -54,8 +56,13 @@ def main():
     port = int(options.pop('port', 8086))
     options.setdefault('server_url', 'http://%s:%d' % (host, port))
     if 'unit_system' in options:
-        options['unit_system'] = weewx.units.unit_constants[options['unit_system']]
+        unit_system = influx.get_unit_system(options['unit_system'])
+        if unit_system is None:
+            parser.error("unknown unit_system '%s'. Use US, METRIC or METRICWX"
+                         % options['unit_system'])
+        options['unit_system'] = unit_system
     options['inputs'] = dict(config['StdRESTful']['Influx'].get('inputs', {}))
+    influx.drop_unknown_options(options)
     worker = influx.InfluxThread(queue.Queue(), **options)
     with weewx.manager.open_manager_with_config(config, data_binding) as dbm:
         count = replay(worker, dbm.genBatchRecords(args.start, args.stop), dbm)
