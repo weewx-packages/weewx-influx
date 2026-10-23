@@ -1,4 +1,4 @@
-Unreleased
+2026-10-23  0.21.2
   A missing database, org, bucket or token, an invalid server_url or an unknown unit_system is logged and the uploader does not start. WeeWX keeps running.
   Accept unit_system in any case.
   Log and ignore unknown options.
