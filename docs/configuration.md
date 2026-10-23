@@ -1,42 +1,14 @@
 # Influx uploader configuration reference
 
-For installation and a working v1 or v2 connection, see [the README](../README.md).
-These options belong under `[StdRESTful] [[Influx]]` in `weewx.conf`.
-
-| Option | Meaning and default |
-| --- | --- |
-| version | API generation, `1` or `2`; default `1` |
-| server_url | Base URL with `http://` or `https://`; overrides host/port |
-| host, port | Used when server_url is absent; defaults localhost and 8086 |
-| database | Required v1 database name |
-| username, password | Optional v1 Basic authentication |
-| create_database | Attempt v1 database creation at startup; default true |
-| dbadmin_username, dbadmin_password | Optional credentials for v1 creation |
-| org, bucket, token | Required v2 organization, bucket and write token |
-| loop_bucket | v2 bucket for LOOP data; defaults to bucket |
-| binding | loop, archive, or both; default archive |
-| data_binding | Archive binding for augmentation; default wx_binding |
-| measurement | Base measurement name; default record |
-| tags | Comma-separated name=value tags; default none |
-| line_format | single-line, multi-line, multi-line-dotted; default single-line |
-| obs_to_upload | most, all or none; default most |
-| append_units_label | Append unit suffixes to generated field names; default true |
-| unit_system | US, METRIC or METRICWX; absent means source units |
-| augment_record | Add archive-derived weather values; default true |
-| verify_ssl | Verify TLS certificates and hostname; default true |
-| ca_file | Optional private CA file |
-| skip_upload | Skip uploads; default false |
-
-The worker also accepts WeeWX REST options `post_interval`, `max_backlog`,
-`stale`, `log_success`, `log_failure`, `timeout`, `max_tries` and `retry_wait`.
-The constructor in [influx.py](../bin/user/influx.py) defines their defaults.
+These options belong under `[StdRESTful] [[Influx]]` in `weewx.conf`. The
+connection settings and the full option list with defaults are in
+[the README](../README.md#configuration).
 
 ## Input map
 
 Set `obs_to_upload = none` to limit output to the input map. With `most` or
 `all`, entries override names, units and formats while other observations remain
-eligible. `most` omits dateTime, interval and usUnits. Non-numeric, missing and
-non-finite readings are skipped.
+eligible.
 
 ```ini
 [StdRESTful]
@@ -66,9 +38,9 @@ non-finite readings are skipped.
                 format = %03.0f
 ```
 
-Custom numeric observations use their registered WeeWX units when converted.
-Choose names and tag values without spaces or line-protocol delimiter characters;
-the uploader interpolates them into the payload.
+Each entry accepts `name`, `units` and `format`. `units` takes a WeeWX unit
+name. Custom numeric observations use their registered WeeWX units when
+converted.
 
 ## Line layouts
 
@@ -93,7 +65,5 @@ weewx.name0,binding=archive,station=A value=12.3 1700000000000000000
 weewx.name1,binding=archive,station=A value=45.6 1700000000000000000
 ```
 
-The service adds a `binding=loop` or `binding=archive` tag. Times are the original
-record's Unix seconds multiplied by one billion. The v2 endpoint specifies
-nanosecond precision explicitly. InfluxDB retention and queries determine which
-historical values remain visible.
+Times are the original record's Unix seconds multiplied by one billion. The
+InfluxDB 2 endpoint specifies nanosecond precision explicitly.
