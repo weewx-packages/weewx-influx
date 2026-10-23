@@ -219,3 +219,29 @@ def test_unit_system_accepts_any_case_and_rejects_unknown(monkeypatch, caplog):
     service = start_service(monkeypatch, {'database': 'x', 'unit_system': 'SI'})
     assert not hasattr(service, 'archive_thread')
     assert "unknown unit_system 'SI'" in caplog.text
+
+
+def test_backfill_accepts_unit_system_in_any_case_and_ignores_unknown_options(monkeypatch, caplog, tmp_path):
+    import contextlib
+    from types import SimpleNamespace
+    config = tmp_path / 'weewx.conf'
+    config.write_text('[StdRESTful]\n    [[Influx]]\n        database = x\n        create_database = false\n'
+                      '        unit_system = metric\n        post_intervall = 60\n')
+    workers = []
+    monkeypatch.setattr(backfill, 'replay', lambda worker, records, dbm: workers.append(worker) or 0)
+    monkeypatch.setattr(backfill.weewx.manager, 'open_manager_with_config',
+                        lambda config, binding: contextlib.nullcontext(SimpleNamespace(genBatchRecords=lambda start, stop: [])))
+    monkeypatch.setattr('sys.argv', ['backfill.py', '--config', str(config)])
+    backfill.main()
+    assert workers[0].unit_system == weewx.METRIC
+    assert "Unknown option 'post_intervall' ignored" in caplog.text
+
+
+def test_unconvertible_input_unit_skips_field_and_keeps_thread_alive(caplog):
+    worker = influx.InfluxThread(queue.Queue(), database='x', create_database=False,
+                                 inputs={'windSpeed': {'units': 'mph'}})
+    for _ in range(2):
+        body = worker.get_post_body({'dateTime': 1700000000, 'usUnits': weewx.US, 'outTemp': 50.0, 'windSpeed': 3.0})[0]
+        assert 'outTemp_F=50.0' in body
+        assert 'windSpeed' not in body
+    assert caplog.text.count("skipped field 'windSpeed'") == 1

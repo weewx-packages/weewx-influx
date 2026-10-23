@@ -39,8 +39,9 @@ eligible.
 ```
 
 Each entry accepts `name`, `units` and `format`. `units` takes a WeeWX unit
-name. Custom numeric observations use their registered WeeWX units when
-converted.
+name, such as `mile_per_hour`, not `mph`. Custom numeric observations use their
+registered WeeWX units when converted. If an observation cannot be converted to
+`units`, it is left out of every upload and a warning is logged once.
 
 ## Line layouts
 
