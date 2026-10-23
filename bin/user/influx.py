@@ -1,4 +1,6 @@
 # Modified 2026-10-22 by weewx-packages: compatibility and tracker repairs.
+# Modified 2026-10-23 by weewx-packages: report invalid and unknown options
+# instead of stopping WeeWX, accept unit_system in any case.
 # Copyright 2016-2021 Matthew Wall
 # Distributed under the terms of the GNU Public License (GPLv3)
 
@@ -119,7 +121,7 @@ the input, independent of the local weewx units.
                 name = outHumidity
                 format = %03.0f
             [[[[windSpeed]]]]
-                units = mph
+                units = mile_per_hour
                 name = windSpeed_mph
                 format = %.2f
             [[[[windDir]]]]
@@ -128,6 +130,7 @@ the input, independent of the local weewx units.
 
 import queue
 import base64
+import inspect
 import math
 import ssl
 import re
@@ -179,6 +182,9 @@ try:
     def loginf(msg):
         log.info(msg)
 
+    def logwrn(msg):
+        log.warning(msg)
+
     def logerr(msg):
         log.error(msg)
 
@@ -194,6 +200,9 @@ except ImportError:
 
     def loginf(msg):
         logmsg(syslog.LOG_INFO, msg)
+
+    def logwrn(msg):
+        logmsg(syslog.LOG_WARNING, msg)
 
     def logerr(msg):
         logmsg(syslog.LOG_ERR, msg)
@@ -328,7 +337,12 @@ class Influx(weewx.restx.StdRESTbase):
         site_dict['augment_record'] = to_bool(site_dict.get('augment_record'))
 
         usn = site_dict.get('unit_system', None)
-        if usn in weewx.units.unit_constants:
+        if usn is not None:
+            usn = usn.upper()
+            if usn not in weewx.units.unit_constants:
+                logerr("Data will not be posted: unknown unit_system '%s'. "
+                       "Use US, METRIC or METRICWX" % site_dict['unit_system'])
+                return
             site_dict['unit_system'] = weewx.units.unit_constants[usn]
             loginf("desired unit system: %s" % usn)
 
@@ -358,11 +372,26 @@ class Influx(weewx.restx.StdRESTbase):
             binding = ','.join(binding)
         loginf('binding: %s' % binding)
 
+        # InfluxThread takes the options as keyword arguments. An option it
+        # does not know would raise TypeError and stop WeeWX, so log it and
+        # leave it out.
+        known = set(inspect.signature(InfluxThread.__init__).parameters)
+        known -= {'self', 'queue'}
+        for option in sorted(set(site_dict) - known):
+            logwrn("Unknown option '%s' ignored" % option)
+            del site_dict[option]
+
         data_queue = queue.Queue()
         try:
             data_thread = InfluxThread(data_queue, **site_dict)
         except weewx.ViolatedPrecondition as e:
             loginf("Data will not be posted: %s" % e)
+            return
+        except ValueError as e:
+            # InfluxThread raises ValueError for an unknown version, a missing
+            # database, org, bucket or token, or a server_url without http://
+            # or https://.
+            logerr("Data will not be posted: %s" % e)
             return
         data_thread.start()
 

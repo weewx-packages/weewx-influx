@@ -184,3 +184,38 @@ def test_klimalogg_binding_and_custom_values_reach_receiver(receiver,monkeypatch
     service.archive_thread.process_record(service.archive_queue.get_nowait(),None)
     assert 'temp0=0.0' in received[0][2]
     assert 'humidity0=44.0' in received[0][2]
+
+
+def start_service(monkeypatch, options):
+    import configobj
+
+    class Engine:
+        def bind(self, *args):
+            pass
+
+    options = dict(options, create_database='false', augment_record='false')
+    monkeypatch.setattr(influx.InfluxThread, 'start', lambda self: None)
+    return influx.Influx(Engine(), configobj.ConfigObj({'StdRESTful': {'Influx': options}}))
+
+
+@pytest.mark.parametrize('options', [{}, {'version': '2', 'org': 'o', 'bucket': 'b'}, {'database': 'x', 'server_url': 'localhost:8086'}])
+def test_invalid_config_is_logged_and_skips_uploader(monkeypatch, caplog, options):
+    service = start_service(monkeypatch, options)
+    assert not hasattr(service, 'archive_thread')
+    assert 'Data will not be posted' in caplog.text
+
+
+def test_unknown_option_is_logged_and_ignored(monkeypatch, caplog):
+    service = start_service(monkeypatch, {'database': 'x', 'post_intervall': '60'})
+    assert service.archive_thread.database == 'x'
+    assert "Unknown option 'post_intervall' ignored" in caplog.text
+
+
+def test_unit_system_accepts_any_case_and_rejects_unknown(monkeypatch, caplog):
+    service = start_service(monkeypatch, {'database': 'x', 'unit_system': 'metric'})
+    record = service.archive_thread.get_record({'dateTime': 1700000000, 'usUnits': weewx.US, 'outTemp': 50.0}, None)
+    assert record['usUnits'] == weewx.METRIC
+    assert record['outTemp'] == pytest.approx(10.0)
+    service = start_service(monkeypatch, {'database': 'x', 'unit_system': 'SI'})
+    assert not hasattr(service, 'archive_thread')
+    assert "unknown unit_system 'SI'" in caplog.text

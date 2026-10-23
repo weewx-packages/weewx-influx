@@ -80,6 +80,7 @@ check the endpoint and the response body in the log.
 
 | Option | Default | Meaning |
 |---|---|---|
+| `enable` | `True` | `false` turns the uploader off. |
 | `version` | `1` | InfluxDB API, `1` or `2`. |
 | `server_url` | `http://<host>:<port>` | Base URL with `http://` or `https://`. Overrides `host` and `port`. |
 | `host` | `localhost` | Server host when `server_url` is absent. |
@@ -98,7 +99,7 @@ check the endpoint and the response body in the log.
 | `line_format` | `single-line` | `single-line`, `multi-line` or `multi-line-dotted`. |
 | `obs_to_upload` | `most` | `most` skips `dateTime`, `interval` and `usUnits`. `all` sends every field. `none` sends only the input map. |
 | `append_units_label` | `True` | Append a unit suffix to field names, such as `outTemp_F`. |
-| `unit_system` | none | Convert to `US`, `METRIC` or `METRICWX`. Without it, the source units are sent. |
+| `unit_system` | none | Convert to `US`, `METRIC` or `METRICWX`, in any case. Without it, the source units are sent. |
 | `verify_ssl` | `True` | Verify the TLS certificate and host name. |
 | `ca_file` | none | CA file for a private certificate authority. |
 | `skip_upload` | `False` | Build the payload but do not send it. |
@@ -110,6 +111,11 @@ check the endpoint and the response body in the log.
 | `retry_wait` | `5` | Seconds between attempts. |
 | `log_success`, `log_failure` | `True` | Log successful and failed uploads. |
 
+The uploader logs an error and does not start if a required value is
+missing, `server_url` lacks `http://` or `https://`, or `unit_system` has
+another value. WeeWX keeps running. Options not in this table are logged as
+unknown and ignored.
+
 The service adds a `binding=archive` or `binding=loop` tag to every point.
 Non-numeric, missing and non-finite values are skipped. Line layouts and the
 input map for renaming, converting and formatting single observations are
@@ -118,11 +124,6 @@ decides measurement and field names, so choose it before building dashboards.
 
 ## Limitations
 
-- A missing `database` for version 1, missing `org`, `bucket` or `token` for
-  version 2, a `server_url` without `http://` or `https://`, or an option
-  that is neither in the table nor `enable` stop WeeWX at startup.
-- `unit_system` accepts only `US`, `METRIC` and `METRICWX` in capitals. Any
-  other value ends the upload thread at the first record.
 - Measurement, tag and field names are written into the line protocol
   without escaping. Do not use spaces, commas or `=` in them.
 - Which history stays visible depends on InfluxDB retention.
