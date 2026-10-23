@@ -148,7 +148,7 @@ import weewx.restx
 import weewx.units
 from weeutil.weeutil import to_bool, accumulateLeaves
 
-VERSION = "0.21.1"
+VERSION = "0.21.2"
 
 def _version_key(value):
     """Return a release tuple with prereleases before the final release.
